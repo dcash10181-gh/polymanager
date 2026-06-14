@@ -65,6 +65,9 @@ class Portfolio:
         self.marks[token_id] = price
 
     # -- exposure / pnl -----------------------------------------------------
+    # NOTE: exposure is measured at *cost basis* (capital deployed), not at the
+    # current mark. Caps therefore bound deployed capital; mark-to-market value
+    # can drift above the cap as positions move in our favour (a good problem).
     def market_exposure_usd(self, market_id: str) -> float:
         return sum(abs(p.cost_basis_usd) for p in self.positions.values()
                    if p.market_id == market_id and p.shares != 0)

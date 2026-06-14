@@ -132,6 +132,7 @@ class Settings(BaseSettings):
     order_rejection_rate_limit: float = 0.25
     fee_bps: float = 0.0                   # Polymarket maker/taker fee (bps)
     order_slice_usd: float = 50.0          # split larger orders into slices
+    min_order_size_usd: float = 1.0        # skip live orders below this notional
 
     # --- Storage / logging --------------------------------------------------
     db_path: str = "data/polymanager.db"

@@ -16,12 +16,29 @@ import logging
 
 from app.config import BotMode, Settings, StrategyName
 from app.logger import get_logger, log_event
-from app.models import (ClaudeReview, OrderBook, OrderIntent, Signal,
+from app.models import (ClaudeReview, OrderBook, OrderIntent, Side, Signal,
                         new_client_order_id)
 from app.paper_broker import PaperBroker
 from app.portfolio import Portfolio
 
 log = get_logger("execution")
+
+
+def snap_price(price: float, tick: float, side: Side) -> float:
+    """Snap a price onto the market's tick grid.
+
+    Buys floor (never pay more than intended), sells ceil (never sell cheaper),
+    so snapping can only improve our price. Clamped to (tick, 1 - tick).
+    """
+    if tick <= 0:
+        return round(price, 4)
+    import math
+    steps = price / tick
+    snapped = (math.floor(steps) if side is Side.BUY else math.ceil(steps)) * tick
+    snapped = max(tick, min(1.0 - tick, snapped))
+    # avoid binary-float dust like 0.5700000000000001
+    decimals = max(0, len(str(tick).split(".")[-1])) if "." in str(tick) else 0
+    return round(snapped, decimals + 1)
 
 
 # --------------------------------------------------------------------------
@@ -89,18 +106,27 @@ class LiveExecutor:
         log.warning("LiveExecutor active — REAL orders enabled (mode=%s)",
                     settings.bot_mode.value)
 
-    def place_limit_order(self, intent: OrderIntent) -> dict:
+    def place_limit_order(self, intent: OrderIntent) -> dict | None:
         from py_clob_client.clob_types import OrderArgs, OrderType
 
-        args = OrderArgs(
-            token_id=intent.token_id,
-            price=round(intent.price, 4),
-            size=intent.size_shares,
-            side=intent.side.value,
-        )
+        # Snap to the market's tick grid; off-tick prices are rejected by the API.
+        try:
+            tick = float(self.client.get_tick_size(intent.token_id))
+        except Exception:
+            tick = 0.01
+        price = snap_price(intent.price, tick, intent.side)
+        size = intent.size_shares
+
+        # Skip sub-minimum orders rather than eat a guaranteed rejection.
+        if price * size < self.s.min_order_size_usd:
+            log.warning("skip sub-min order %s: %.4f x %.2f < $%.2f",
+                        intent.client_order_id, price, size, self.s.min_order_size_usd)
+            return None
+
+        args = OrderArgs(token_id=intent.token_id, price=price, size=size,
+                         side=intent.side.value)
         signed = self.client.create_order(args)
-        resp = self.client.post_order(signed, OrderType.GTC)
-        return resp
+        return self.client.post_order(signed, OrderType.GTC)
 
     def cancel(self, order_id: str) -> dict:
         return self.client.cancel(order_id)
@@ -171,7 +197,9 @@ class ExecutionEngine:
             elif mode.places_real_orders and self.live:
                 try:
                     resp = self.live.place_limit_order(intent)
-                    log.info("live order placed: %s -> %s", intent.client_order_id, resp)
+                    if resp is not None:
+                        log.info("live order placed: %s -> %s",
+                                 intent.client_order_id, resp)
                 except Exception:
                     log.exception("live order placement failed")
                     raise
