@@ -30,19 +30,47 @@ places trades. Deterministic code owns sizing, exposure limits, and execution.
 
 ## Quick start
 
+**One-command setup** (creates the virtualenv, installs deps, runs the tests):
+
+```bash
+make setup
+```
+
+Then, step by step:
+
+1. **See it run with no funds, keys, or network** — the full pipeline on
+   synthetic data, ending in a performance report:
+   ```bash
+   make demo
+   ```
+2. **Configure** (only needed to trade *live* Polymarket data/orders):
+   ```bash
+   cp .env.example .env       # edit; NEVER commit .env or paste keys into any chat
+   ```
+   Leave `BOT_MODE=paper` (the default) to simulate against live books with no
+   funds. Set `REASONER_DISABLED=true` to skip the Anthropic key too.
+3. **Run it** (paper mode unless you change `BOT_MODE`):
+   ```bash
+   make run            # = python -m app.main
+   ```
+4. **Review performance** by strategy (win rate, EV per dollar, fill rate):
+   ```bash
+   make report         # = python -m app.report
+   ```
+
+`make help` lists every target. No `make`? The raw equivalents:
+
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env        # then edit; NEVER commit .env or paste keys into any chat
-pytest                       # run the test suite
-python -m scripts.demo_paper # offline demo: full pipeline, synthetic data, no funds
-python -m app.main           # runs in paper mode by default
-python -m app.report         # performance report from the audit log
+python -m scripts.demo_paper   # offline demo, no funds
+python -m app.main             # paper mode by default
+python -m app.report           # performance report
 ```
 
-Paper mode needs **no credentials**. Set `REASONER_DISABLED=true` to run fully
-offline without an Anthropic key. Real funds are only ever at risk in
+Paper mode needs **no credentials**. Real funds are only ever at risk in
 `tiny_live`/`live`, which require an explicit mode change **and** a wallet key.
+Before going anywhere near live, follow **[`docs/RUNBOOK.md`](docs/RUNBOOK.md)**.
 
 ## Alpha sources (where the edge comes from)
 
