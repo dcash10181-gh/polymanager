@@ -74,7 +74,9 @@ class Backtester:
         self.risk = RiskManager(settings, self.portfolio)
         self.broker = PaperBroker(settings, self.portfolio, fill_ratio=fill_ratio)
         from app.execution_engine import TradeIntentBuilder
+        from app.exit_manager import ExitManager
         self.builder = TradeIntentBuilder()
+        self.exits = ExitManager(settings)
 
     def run(self, frames) -> BacktestResult:
         res = BacktestResult()
@@ -90,6 +92,14 @@ class Backtester:
                 res.fills += len(fills)
                 self.portfolio.set_mark(book.token_id, book.midpoint or
                                         self.portfolio.marks.get(book.token_id, 0.0))
+                # Manage exits (take-profit / stop / time-stop) on open positions.
+                position = self.portfolio.get_state(book.token_id)
+                if position is not None and abs(position.shares) > 1e-9:
+                    exit_intent = self.exits.evaluate(position, book, now=now)
+                    if exit_intent is not None:
+                        res.orders += 1
+                        self.broker.place_order(exit_intent, book)
+                        res.fills += len(self.broker.process_book(book))
 
             signals = self.engine.evaluate(market, frame.get("external", {}), now=now)
             for sig in signals:
@@ -110,9 +120,8 @@ class Backtester:
                         continue
                     res.orders += 1
                     book = books.get(intent.token_id)
-                    fills = []
-                    order = self.broker.place_order(intent, book)
-                    # immediate fills counted via order state
+                    self.broker.place_order(intent, book)
+                    self.exits.register(intent)  # arm take-profit / stop / time-stop
             # mark unrealized at end of each frame
         res.realized_pnl_usd = round(self.portfolio.realized_pnl_usd, 4)
         res.unrealized_pnl_usd = round(self.portfolio.unrealized_pnl_usd(), 4)
