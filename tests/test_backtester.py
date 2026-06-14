@@ -8,25 +8,25 @@ def _settings():
                     max_spread=0.03)
 
 
-def test_backtest_momentum_marks_unrealized_gain():
+def test_backtest_momentum_takes_profit():
     s = _settings()
     bt = Backtester(s, enabled=[StrategyName.momentum_lag], fill_ratio=1.0)
     m = make_binary_market()
     frames = [
-        # price low, external fair high -> buy YES
+        # price low, external fair high -> buy YES (~0.57)
         {"timestamp": 1000.0, "market": m,
          "books": {"YES": make_book("YES", 0.55, 0.57, ask_size=5000, ts=1000.0)},
          "external": {"fair_price:YES": 0.62}},
-        # price rallies -> mark up the long position
+        # price rallies past the take-profit -> exit manager flattens for a gain
         {"timestamp": 1001.0, "market": m,
-         "books": {"YES": make_book("YES", 0.61, 0.63, ts=1001.0)},
+         "books": {"YES": make_book("YES", 0.61, 0.63, bid_size=5000, ts=1001.0)},
          "external": {}},
     ]
     res = bt.run(frames)
     assert res.signals >= 1
-    assert res.orders >= 1
-    assert bt.portfolio.get_position("YES").shares > 0
-    assert res.unrealized_pnl_usd > 0  # bought ~0.57, marked ~0.62
+    assert res.orders >= 2                       # entry + take-profit exit
+    assert abs(bt.portfolio.get_position("YES").shares) < 1e-9  # flat after exit
+    assert res.realized_pnl_usd > 0              # bought ~0.57, sold ~0.61
 
 
 def test_backtest_arbitrage_places_both_legs():

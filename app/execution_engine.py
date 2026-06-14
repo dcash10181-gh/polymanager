@@ -181,29 +181,38 @@ class ExecutionEngine:
     def submit(self, signal: Signal, approved_size_usd: float | None,
                book: OrderBook | None = None) -> list[OrderIntent]:
         intents = self.builder.build(signal, approved_size_usd)
-        mode = self.s.bot_mode
-
         for intent in intents:
-            if mode in (BotMode.research, BotMode.shadow):
-                log_event(log, logging.INFO, f"[{mode.value}] intent (no order)",
-                          stage="intent", strategy=intent.strategy.value,
-                          token_id=intent.token_id, side=intent.side.value,
-                          price=intent.price, size_usd=intent.size_usd)
-                if self.db:
-                    self.db.save_rejection(mode.value, "shadow_no_execute",
-                                          {"token_id": intent.token_id})
-            elif mode.is_paper and self.paper:
-                self.paper.place_order(intent, book)
-            elif mode.places_real_orders and self.live:
-                try:
-                    resp = self.live.place_limit_order(intent)
-                    if resp is not None:
-                        log.info("live order placed: %s -> %s",
-                                 intent.client_order_id, resp)
-                except Exception:
-                    log.exception("live order placement failed")
-                    raise
+            self._place_intent(intent, book)
         return intents
+
+    def place_exit(self, intent: OrderIntent, book: OrderBook | None = None) -> None:
+        """Place a position-flattening order. Allowed even when the kill switch
+        is tripped — reducing risk is always permitted."""
+        self._place_intent(intent, book, is_exit=True)
+
+    def _place_intent(self, intent: OrderIntent, book: OrderBook | None,
+                      is_exit: bool = False) -> None:
+        mode = self.s.bot_mode
+        tag = "exit" if is_exit else "entry"
+        if mode in (BotMode.research, BotMode.shadow):
+            log_event(log, logging.INFO, f"[{mode.value}] {tag} intent (no order)",
+                      stage="intent", kind=tag, strategy=intent.strategy.value,
+                      token_id=intent.token_id, side=intent.side.value,
+                      price=intent.price, size_usd=intent.size_usd)
+            if self.db:
+                self.db.save_rejection(mode.value, f"shadow_no_execute_{tag}",
+                                      {"token_id": intent.token_id})
+        elif mode.is_paper and self.paper:
+            self.paper.place_order(intent, book)
+        elif mode.places_real_orders and self.live:
+            try:
+                resp = self.live.place_limit_order(intent)
+                if resp is not None:
+                    log.info("live %s order placed: %s -> %s",
+                             tag, intent.client_order_id, resp)
+            except Exception:
+                log.exception("live %s order placement failed", tag)
+                raise
 
     # -- order maintenance --------------------------------------------------
     def cancel_stale_orders(self, now: float | None = None) -> int:

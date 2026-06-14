@@ -22,6 +22,7 @@ from app.claude_reasoner import ClaudeReasoner
 from app.config import BotMode, Settings, get_settings
 from app.db import Database
 from app.execution_engine import ExecutionEngine
+from app.exit_manager import ExitManager
 from app.logger import get_logger, log_event, setup_logging
 from app.market_discovery import MarketDiscovery
 from app.models import Market
@@ -48,6 +49,7 @@ class TradingApp:
         self.kill = KillSwitch()
         self.risk = RiskManager(self.s, self.portfolio, self.kill, db=self.db)
         self.execution = ExecutionEngine.create(self.s, self.portfolio, db=self.db)
+        self.exits = ExitManager(self.s)
         self._stop = False
         # Operator alpha: callable(market) -> external-signal dict. Wired from
         # config when enabled; can also be set directly (tests, custom feeds).
@@ -89,7 +91,7 @@ class TradingApp:
             return
         latency_ms = (time.time() - t0) * 1000.0
 
-        # Re-fill resting paper orders and drop stale orders first.
+        # Re-fill resting paper orders, mark positions, and manage exits first.
         for book in books.values():
             if self.market_data.is_stale(book.token_id):
                 self.execution.cancel_stale_orders()
@@ -97,6 +99,7 @@ class TradingApp:
             self.execution.process_fills(book)
             self.portfolio.set_mark(book.token_id, book.midpoint or
                                     self.portfolio.marks.get(book.token_id, 0.0))
+            self._manage_exit(book)
 
         signals = self.engine.evaluate(market, self.external_for(market))
         for sig in signals:
@@ -121,9 +124,21 @@ class TradingApp:
                 open_orders_count=self.execution.open_orders_count())
             if not decision.allowed:
                 continue
-            self.execution.submit(sig, decision.approved_size_usd, book)
+            placed = self.execution.submit(sig, decision.approved_size_usd, book)
+            for intent in placed:
+                self.exits.register(intent)
 
         self.risk.check_kill_switches(latency_ms=latency_ms)
+
+    def _manage_exit(self, book) -> None:
+        """Flatten a position if it has hit its take-profit / stop / time-stop."""
+        position = self.portfolio.get_state(book.token_id)
+        if position is None or abs(position.shares) < 1e-9:
+            return
+        exit_intent = self.exits.evaluate(position, book)
+        if exit_intent is not None:
+            self.execution.place_exit(exit_intent, book)
+            self.execution.process_fills(book)  # let the exit fill immediately (paper)
 
     def run_once(self) -> None:
         try:
