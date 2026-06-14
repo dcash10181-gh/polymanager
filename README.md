@@ -35,11 +35,14 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env        # then edit; NEVER commit .env or paste keys into any chat
 pytest                       # run the test suite
+python -m scripts.demo_paper # offline demo: full pipeline, synthetic data, no funds
 python -m app.main           # runs in paper mode by default
+python -m app.report         # performance report from the audit log
 ```
 
 Paper mode needs **no credentials**. Set `REASONER_DISABLED=true` to run fully
-offline without an Anthropic key.
+offline without an Anthropic key. Real funds are only ever at risk in
+`tiny_live`/`live`, which require an explicit mode change **and** a wallet key.
 
 ## Alpha sources (where the edge comes from)
 
