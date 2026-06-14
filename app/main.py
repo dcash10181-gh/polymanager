@@ -49,9 +49,25 @@ class TradingApp:
         self.risk = RiskManager(self.s, self.portfolio, self.kill, db=self.db)
         self.execution = ExecutionEngine.create(self.s, self.portfolio, db=self.db)
         self._stop = False
-        self.external_provider = None  # operator can inject a callable(market)->dict
+        # Operator alpha: callable(market) -> external-signal dict. Wired from
+        # config when enabled; can also be set directly (tests, custom feeds).
+        self.external_provider = self._build_external_provider()
 
     # ----------------------------------------------------------------------
+    def _build_external_provider(self):
+        providers = []
+        if self.s.enable_crypto_alpha:
+            from app.alpha.crypto_threshold import CryptoThresholdProvider
+            from app.alpha.price_feed import PriceFeed
+            feed = PriceFeed(base_url=self.s.alpha_price_host)
+            providers.append(CryptoThresholdProvider(
+                self.s, feed, catalyst_horizon_days=self.s.alpha_catalyst_horizon_days))
+            log.warning("crypto-threshold alpha provider enabled")
+        if not providers:
+            return None
+        from app.alpha.base import CompositeProvider
+        return CompositeProvider(providers)
+
     def external_for(self, market: Market) -> dict:
         if self.external_provider is None:
             return {}

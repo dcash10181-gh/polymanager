@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 readme = "README.md"
 
 [tool.setuptools]
-packages = ["app", "app.strategies"]
+packages = ["app", "app.strategies", "app.alpha"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
