@@ -41,6 +41,28 @@ python -m app.main           # runs in paper mode by default
 Paper mode needs **no credentials**. Set `REASONER_DISABLED=true` to run fully
 offline without an Anthropic key.
 
+## Alpha sources (where the edge comes from)
+
+Arbitrage derives real edge from order books alone. The other three strategies
+(near-certainty, momentum-lag, cheap-tail) consume an **external alpha input**
+and stay dormant without it — the bot never fabricates edge.
+
+A provider is any `callable(market) -> dict` returning keys like
+`fair_price:<token_id>`, `true_prob:<token_id>`, `catalyst:<token_id>`. Set
+`app.external_provider` directly, or enable a built-in one via config.
+
+**Built-in: crypto-threshold provider.** Prices markets like *"Will Bitcoin be
+above $100k by Dec 31?"* from live spot (Coinbase) with a lognormal model — as
+spot moves, fair value updates, which is the board-behind-the-move edge.
+
+```bash
+ENABLE_CRYPTO_ALPHA="true"   # in .env
+```
+
+Write your own by subclassing `app.alpha.base.ExternalSignalProvider` and adding
+it to the `CompositeProvider`. Per-asset volatility is configurable; "reach/hit"
+markets are priced conservatively as terminal (not barrier) options.
+
 ## Safety invariants
 
 - `BOT_MODE` defaults to `paper`; it can never *default* to live.

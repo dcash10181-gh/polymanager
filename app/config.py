@@ -134,6 +134,11 @@ class Settings(BaseSettings):
     order_slice_usd: float = 50.0          # split larger orders into slices
     min_order_size_usd: float = 1.0        # skip live orders below this notional
 
+    # --- Alpha / external signal providers ----------------------------------
+    enable_crypto_alpha: bool = False      # wire the crypto-threshold provider
+    alpha_price_host: str = "https://api.coinbase.com"
+    alpha_catalyst_horizon_days: float = 7.0
+
     # --- Storage / logging --------------------------------------------------
     db_path: str = "data/polymanager.db"
     log_dir: str = "logs"
