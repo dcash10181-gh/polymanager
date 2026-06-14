@@ -71,4 +71,6 @@ markets are priced conservatively as terminal (not barrier) options.
 - The risk manager can veto both the signal engine and Claude.
 - Kill switches halt new entries and cancel orders on any anomaly.
 
-See `docs/` and module docstrings for details.
+See **[`docs/RUNBOOK.md`](docs/RUNBOOK.md)** for the full operating procedure
+(the `paper → shadow → tiny_live → live` ladder and go/no-go gates), and module
+docstrings for implementation details.
